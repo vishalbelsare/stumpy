@@ -1,17 +1,16 @@
 #!/bin/sh
 
-# 1. Update version number in setup.py
+# 1. Update version number in pyproject.toml
 # 2. Update CHANGELOG
 # 3. Update README with new features/functions/tutorials
-# 4. Determine minimum dependencies
-#    a) Find the minimum Python and NumPy version you want to support: https://numpy.org/neps/nep-0029-deprecation_policy.html#support-table
-#    b) Then find the SciPy version that has a "Python" version and "Minimum NumPy version" that is supported: https://docs.scipy.org/doc/scipy/reference/toolchain.html#numpy
-#    c) Check Numba release notes for mimumum Python and NumPy versions supported https://numba.pydata.org/numba-doc/dev/release-notes.html
-# 5. Bump minimum dependencies
-#    a) setup.py
+# 4. Determine minimum versions and dependencies with ./min.py
+# 5. Bump minimum versions and dependencies
+#    a) pyproject.toml
 #    b) requirements.txt
-#    d) environment.yml
+#    c) environment.yml
+#    d) .github/worflows/github-actions.yml
 #    e) recipes/meta.yaml in conda-feedstock
+#    f) README.rst
 # 6. Commit all above changes as the latest version number and push
 #
 # For conda-forge
@@ -60,11 +59,62 @@
 #     GROUP BY DATE(timestamp)
 # )
 # ORDER BY date
-# 
 
+###############
+#  Functions  #
+###############
+
+upload_test_pypi()
+{
+    # Upload to Test PyPi
+    if ! [ -f $HOME/.pypirc ]; then
+        # .pypirc file does not exist, prompt for API token
+        twine upload --verbose --repository-url https://test.pypi.org/legacy/ dist/*
+    else
+        # Get API token from .pypirc file
+        twine upload --verbose -r testpypi dist/*
+    fi
+}
+
+upload_pypi()
+{
+    # Upload to PyPi
+    if ! [ -f $HOME/.pypirc ]; then
+        # .pypirc file does not exist, prompt for API token
+        twine upload dist/*
+    else
+        # Get API token from .pypirc file
+        twine upload -r pypi dist/*
+    fi
+}
+
+# Use API Token instead of username+password
+# https://pypi.org/help/#apitoken
+# Place the API Token(s) in your $HOME/.pypirc
+#
+# # Example .pypirc file
+#
+# [distutils]
+# index-servers =
+#     pypi
+#     testpypi
+#
+# [pypi]
+# repository = https://upload.pypi.org/legacy/
+# username = __token__
+# password = <PyPI API Token>
+#
+# [testpypi]
+# repository = https://test.pypi.org/legacy/
+# username = __token__
+# password = <Test PyPI API Token>
+
+###########
+#   Main  #
+###########
 
 rm -rf dist
-python3 -m build --sdist --wheel 
-twine upload --verbose --repository-url https://test.pypi.org/legacy/ dist/*
-# twine upload dist/*
+python3 -m build --sdist --wheel
+upload_test_pypi
+# upload_pypi
 rm -rf build dist stumpy.egg-info
