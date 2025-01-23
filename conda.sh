@@ -1,4 +1,6 @@
 #!/bin/bash
+
+MAMBA_NO_LOW_SPEED_LIMIT=0
 conda_env="$(conda info --envs | grep '*' | awk '{print $1}')"
 arch_name="$(uname -m)"
 if [[ $1 == "numba" ]] && [[ $arch_name == "arm64" ]]; then
@@ -11,6 +13,9 @@ if [[ $# -gt 0 ]]; then
     if [ $1 == "min" ]; then
         install_mode="min"
         echo "Installing minimum dependencies with install_mode=\"min\""
+    elif [[ $1 == "ray" ]]; then
+        install_mode="ray"
+        echo "Installing ray dependencies with install_mode=\"ray\""
     elif [[ $1 == "numba" ]] && [[ "${arch_name}" != "arm64" ]]; then
         install_mode="numba"
         echo "Installing numba release candidate dependencies with install_mode=\"numba\""
@@ -55,6 +60,14 @@ generate_numba_environment_yaml()
     grep -Ev "numba|python" environment.yml > environment.numba.yml
 }
 
+generate_ray_environment_yaml()
+{
+    # Limit max Python version and append pip install ray
+    echo "Generating \"environment.ray.yml\" File"
+    ray_python=`./ray_python_version.py`
+    sed "/  - python/ s/$/,<=$ray_python/" environment.yml | cat - <(echo $'  - pip\n  - pip:\n    - ray>=2.23.0') > environment.ray.yml
+}
+
 fix_libopenblas()
 {
     if [ ! -f $CONDA_PREFIX/lib/libopenblas.dylib ]; then
@@ -69,26 +82,31 @@ clean_up()
     echo "Cleaning Up"
     rm -rf "environment.min.yml"
     rm -rf "environment.numba.yml"
+    rm -rf "environment.ray.yml"
 }
 
 ###########
 #   Main  #
 ###########
 
-conda update -y conda
-conda update -y --all
+conda update -c conda-forge -y conda
+conda update -c conda-forge -y --all
 conda install -y -c conda-forge mamba
 
 if [[ `uname` == "Linux" && `which nvcc | wc -l` -lt "1" ]]; then
+    rm -rf /tmp/cuda-installer.log
     # conda install -y -c conda-forge cudatoolkit-dev'<11.4'
-    # conda install -y -c conda-forge cudatoolkit-dev
-    mamba install -y -c conda-forge cudatoolkit-dev
+    conda install -y -c conda-forge cudatoolkit-dev
+    # mamba install -y -c conda-forge cudatoolkit-dev
     echo "Please reboot the server to resolve any CUDA driver/library version mismatches"
 fi
 
 if [[ $install_mode == "min" ]]; then
     generate_min_environment_yaml
     mamba env update --name $conda_env --file environment.min.yml || conda env update --name $conda_env --file environment.min.yml
+elif [[ $install_mode == "ray" ]]; then
+    generate_ray_environment_yaml
+    mamba env update --name $conda_env --file environment.ray.yml || conda env update --name $conda_env --file environment.ray.yml
 elif [[ $install_mode == "numba" ]]; then
     echo ""
     echo "Installing python=$python_version"
@@ -104,6 +122,7 @@ elif [[ $install_mode == "numba" ]]; then
     mamba env update --name $conda_env --file environment.numba.yml || conda env update --name $conda_env --file environment.numba.yml
 else
     mamba env update --name $conda_env --file environment.yml || conda env update --name $conda_env --file environment.yml
+    conda update -c conda-forge -y numpy scipy numba black twine
 fi
 
 fix_libopenblas

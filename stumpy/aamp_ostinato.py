@@ -4,11 +4,13 @@
 
 import numpy as np
 
-from . import core, aamp, aamped
+from . import core
+from .aamp import aamp
+from .aamped import aamped
 
 
 def _aamp_across_series_nearest_neighbors(
-    Ts, Ts_idx, subseq_idx, m, Ts_squared, Ts_subseq_isfinite
+    Ts, Ts_idx, subseq_idx, m, Ts_subseq_isfinite, p
 ):
     """
     For multiple time series find, per individual time series, the subsequences closest
@@ -30,11 +32,13 @@ def _aamp_across_series_nearest_neighbors(
     m : int
         Window size
 
-    Ts_squared : list
-        A list of rolling window `T_squared` for each time series in `Ts`
-
     Ts_subseq_isfinite : list
         A list of rolling window `T_subseq_isfinite` for each time series in `Ts`
+
+    p : float
+        The p-norm to apply for computing the Minkowski distance. Minkowski distance is
+        typically used with `p` being 1 or 2, which correspond to the Manhattan distance
+        and the Euclidean distance, respectively.
 
     Returns
     -------
@@ -48,20 +52,15 @@ def _aamp_across_series_nearest_neighbors(
     """
     k = len(Ts)
     Q = Ts[Ts_idx][subseq_idx : subseq_idx + m]
-    Q_squared = np.sum(Q * Q)
     nns_radii = np.zeros(k, dtype=np.float64)
     nns_subseq_idx = np.zeros(k, dtype=np.int64)
 
     for i in range(k):
         if np.any(~np.isfinite(Q)):  # pragma: no cover
-            distance_profile = np.empty(Ts[i].shape[0] - m + 1, dtype=np.float64)
-            distance_profile[:] = np.inf
+            distance_profile = np.full(Ts[i].shape[0] - m + 1, np.inf, dtype=np.float64)
         else:
-            QT = core.sliding_dot_product(
-                Ts[Ts_idx][subseq_idx : subseq_idx + m], Ts[i]
-            )
-            distance_profile = core._mass_absolute(Q_squared, Ts_squared[i], QT)
-            distance_profile[~Ts_subseq_isfinite[i]] = np.inf
+            distance_profile = core.mass_absolute(Q, Ts[i], Ts_subseq_isfinite[i], p=p)
+
         nns_subseq_idx[i] = np.argmin(distance_profile)
         nns_radii[i] = distance_profile[nns_subseq_idx[i]]
 
@@ -69,7 +68,7 @@ def _aamp_across_series_nearest_neighbors(
 
 
 def _get_aamp_central_motif(
-    Ts, bsf_radius, bsf_Ts_idx, bsf_subseq_idx, m, Ts_squared, Ts_subseq_isfinite
+    Ts, bsf_radius, bsf_Ts_idx, bsf_subseq_idx, m, Ts_subseq_isfinite, p
 ):
     """
     Compare subsequences with the same radius and return the most central motif (i.e.,
@@ -92,11 +91,13 @@ def _get_aamp_central_motif(
     m : int
         Window size
 
-    Ts_squared : list
-        A list of rolling window `T_squared` for each time series in `Ts`
-
     Ts_subseq_isfinite : list
         A list of rolling window `T_subseq_isfinite` for each time series in `Ts`
+
+    p : float
+        The p-norm to apply for computing the Minkowski distance. Minkowski distance is
+        typically used with `p` being 1 or 2, which correspond to the Manhattan distance
+        and the Euclidean distance, respectively.
 
     Returns
     -------
@@ -112,7 +113,7 @@ def _get_aamp_central_motif(
         the most central consensus motif
     """
     bsf_nns_radii, bsf_nns_subseq_idx = _aamp_across_series_nearest_neighbors(
-        Ts, bsf_Ts_idx, bsf_subseq_idx, m, Ts_squared, Ts_subseq_isfinite
+        Ts, bsf_Ts_idx, bsf_subseq_idx, m, Ts_subseq_isfinite, p
     )
     bsf_nns_mean_radii = bsf_nns_radii.mean()
 
@@ -121,7 +122,7 @@ def _get_aamp_central_motif(
 
     for Ts_idx, subseq_idx in zip(candidate_nns_Ts_idx, candidate_nns_subseq_idx):
         candidate_nns_radii, _ = _aamp_across_series_nearest_neighbors(
-            Ts, Ts_idx, subseq_idx, m, Ts_squared, Ts_subseq_isfinite
+            Ts, Ts_idx, subseq_idx, m, Ts_subseq_isfinite, p
         )
         if (
             np.isclose(candidate_nns_radii.max(), bsf_radius)
@@ -137,9 +138,9 @@ def _get_aamp_central_motif(
 def _aamp_ostinato(
     Ts,
     m,
-    Ts_squared,
     Ts_subseq_isfinite,
-    dask_client=None,
+    p=2.0,
+    client=None,
     device_id=None,
     mp_func=aamp,
 ):
@@ -154,25 +155,26 @@ def _aamp_ostinato(
     m : int
         Window size
 
-    Ts_squared : list
-        A list of rolling window `T_squared` for each time series in `Ts`
-
     Ts_subseq_isfinite : list
         A list of rolling window `T_subseq_isfinite` for each time series in `Ts`
 
-    dask_client : client, default None
-        A Dask Distributed client that is connected to a Dask scheduler and
-        Dask workers. Setting up a Dask distributed cluster is beyond the
-        scope of this library. Please refer to the Dask Distributed
+    p : float, default 2.0
+        The p-norm to apply for computing the Minkowski distance. Minkowski distance is
+        typically used with `p` being 1 or 2, which correspond to the Manhattan distance
+        and the Euclidean distance, respectively.
+
+    client : client, default None
+        A Dask or Ray Distributed client. Setting up a distributed cluster is beyond
+        the scope of this library. Please refer to the Dask or Ray Distributed
         documentation.
 
     device_id : int or list, default None
         The (GPU) device number to use. The default value is `0`. A list of
-        valid device ids (int) may also be provided for parallel GPU-STUMP
+        valid device ids (``int``) may also be provided for parallel GPU-STUMP
         computation. A list of all valid device ids can be obtained by
         executing `[device.id for device in numba.cuda.list_devices()]`.
 
-    mp_func : object, default stump
+    mp_func : function, default stump
         Specify a custom matrix profile function to use for computing matrix profiles
 
     Returns
@@ -212,7 +214,7 @@ def _aamp_ostinato(
     bsf_subseq_idx = 0
 
     partial_mp_func = core._get_partial_mp_func(
-        mp_func, dask_client=dask_client, device_id=device_id
+        mp_func, client=client, device_id=device_id
     )
 
     k = len(Ts)
@@ -222,25 +224,21 @@ def _aamp_ostinato(
         else:
             h = 0
 
-        mp = partial_mp_func(Ts[j], m, Ts[h], ignore_trivial=False)
+        mp = partial_mp_func(Ts[j], m, Ts[h], ignore_trivial=False, p=p)
         si = np.argsort(mp[:, 0])
         for q in si:
             Q = Ts[j][q : q + m]
-            Q_squared = np.sum(Q * Q)
             radius = mp[q, 0]
             if radius >= bsf_radius:
                 break
             for i in range(k):
                 if i != j and i != h:
                     if np.any(~np.isfinite(Q)):  # pragma: no cover
-                        distance_profile = np.empty(Ts[i].shape[0] - m + 1)
-                        distance_profile[:] = np.inf
+                        distance_profile = np.full(Ts[i].shape[0] - m + 1, np.inf)
                     else:
-                        QT = core.sliding_dot_product(Ts[j][q : q + m], Ts[i])
-                        distance_profile = core._mass_absolute(
-                            Q_squared, Ts_squared[i], QT
+                        distance_profile = core.mass_absolute(
+                            Q, Ts[i], Ts_subseq_isfinite[i], p=p
                         )
-                        distance_profile[~Ts_subseq_isfinite[i]] = np.inf
                     radius = np.max((radius, np.min(distance_profile)))
                     if radius >= bsf_radius:
                         break
@@ -250,7 +248,7 @@ def _aamp_ostinato(
     return bsf_radius, bsf_Ts_idx, bsf_subseq_idx
 
 
-def aamp_ostinato(Ts, m):
+def aamp_ostinato(Ts, m, p=2.0):
     """
     Find the non-normalized (i.e., without z-normalization) consensus motif of multiple
     time series
@@ -267,17 +265,22 @@ def aamp_ostinato(Ts, m):
     m : int
         Window size
 
+    p : float, default 2.0
+        The p-norm to apply for computing the Minkowski distance. Minkowski distance is
+        typically used with `p` being 1 or 2, which correspond to the Manhattan distance
+        and the Euclidean distance, respectively.
+
     Returns
     -------
     central_radius : float
         Radius of the most central consensus motif
 
     central_Ts_idx : int
-        The time series index in `Ts` which contains the most central consensus motif
+        The time series index in `Ts` that contains the most central consensus motif
 
     central_subseq_idx : int
-        The subsequence index within time series `Ts[central_motif_Ts_idx]` the contains
-        most central consensus motif
+        The subsequence index within time series `Ts[central_motif_Ts_idx]` that
+        contains the most central consensus motif
 
     Notes
     -----
@@ -299,24 +302,33 @@ def aamp_ostinato(Ts, m):
     central motif it is necessary to search the subsequences with the
     best radius via `stumpy.ostinato._get_central_motif`
     """
-    Ts_squared = [None] * len(Ts)
+    if not isinstance(Ts, list):  # pragma: no cover
+        raise ValueError(f"`Ts` is of type `{type(Ts)}` but a `list` is expected")
+
+    Ts_copy = [None] * len(Ts)
     Ts_subseq_isfinite = [None] * len(Ts)
     for i, T in enumerate(Ts):
-        Ts[i], Ts_subseq_isfinite[i] = core.preprocess_non_normalized(T, m)
-        Ts_squared[i] = np.sum(core.rolling_window(Ts[i] * Ts[i], m), axis=1)
+        (
+            Ts_copy[i],
+            Ts_subseq_isfinite[i],
+        ) = core.preprocess_non_normalized(T, m, copy=True)
 
     bsf_radius, bsf_Ts_idx, bsf_subseq_idx = _aamp_ostinato(
-        Ts, m, Ts_squared, Ts_subseq_isfinite
+        Ts_copy, m, Ts_subseq_isfinite, p
     )
 
-    (central_radius, central_Ts_idx, central_subseq_idx,) = _get_aamp_central_motif(
-        Ts, bsf_radius, bsf_Ts_idx, bsf_subseq_idx, m, Ts_squared, Ts_subseq_isfinite
+    (
+        central_radius,
+        central_Ts_idx,
+        central_subseq_idx,
+    ) = _get_aamp_central_motif(
+        Ts_copy, bsf_radius, bsf_Ts_idx, bsf_subseq_idx, m, Ts_subseq_isfinite, p
     )
 
     return central_radius, central_Ts_idx, central_subseq_idx
 
 
-def aamp_ostinatoed(dask_client, Ts, m):
+def aamp_ostinatoed(client, Ts, m, p=2.0):
     """
     Find the non-normalized (i.e., without z-normalization) consensus motif of multiple
     time series with a distributed dask cluster
@@ -327,10 +339,9 @@ def aamp_ostinatoed(dask_client, Ts, m):
 
     Parameters
     ----------
-    dask_client : client
-        A Dask Distributed client that is connected to a Dask scheduler and
-        Dask workers. Setting up a Dask distributed cluster is beyond the
-        scope of this library. Please refer to the Dask Distributed
+    client : client
+        A Dask or Ray Distributed client. Setting up a distributed cluster is beyond
+        the scope of this library. Please refer to the Dask or Ray Distributed
         documentation.
 
     Ts : list
@@ -339,17 +350,22 @@ def aamp_ostinatoed(dask_client, Ts, m):
     m : int
         Window size
 
+    p : float, default 2.0
+        The p-norm to apply for computing the Minkowski distance. Minkowski distance is
+        typically used with `p` being 1 or 2, which correspond to the Manhattan distance
+        and the Euclidean distance, respectively.
+
     Returns
     -------
     central_radius : float
         Radius of the most central consensus motif
 
     central_Ts_idx : int
-        The time series index in `Ts` which contains the most central consensus motif
+        The time series index in `Ts` that contains the most central consensus motif
 
     central_subseq_idx : int
-        The subsequence index within time series `Ts[central_motif_Ts_idx]` the contains
-        most central consensus motif
+        The subsequence index within time series `Ts[central_motif_Ts_idx]` that
+        contains the most central consensus motif
 
     Notes
     -----
@@ -371,18 +387,38 @@ def aamp_ostinatoed(dask_client, Ts, m):
     central motif it is necessary to search the subsequences with the
     best radius via `stumpy.ostinato._get_central_motif`
     """
-    Ts_squared = [None] * len(Ts)
+    if not isinstance(Ts, list):  # pragma: no cover
+        raise ValueError(f"`Ts` is of type `{type(Ts)}` but a `list` is expected")
+
+    Ts_copy = [None] * len(Ts)
     Ts_subseq_isfinite = [None] * len(Ts)
     for i, T in enumerate(Ts):
-        Ts[i], Ts_subseq_isfinite[i] = core.preprocess_non_normalized(T, m)
-        Ts_squared[i] = np.sum(core.rolling_window(Ts[i] * Ts[i], m), axis=1)
+        (
+            Ts_copy[i],
+            Ts_subseq_isfinite[i],
+        ) = core.preprocess_non_normalized(T, m, copy=True)
 
     bsf_radius, bsf_Ts_idx, bsf_subseq_idx = _aamp_ostinato(
-        Ts, m, Ts_squared, Ts_subseq_isfinite, dask_client=dask_client, mp_func=aamped
+        Ts_copy,
+        m,
+        Ts_subseq_isfinite,
+        p=p,
+        client=client,
+        mp_func=aamped,
     )
 
-    (central_radius, central_Ts_idx, central_subseq_idx,) = _get_aamp_central_motif(
-        Ts, bsf_radius, bsf_Ts_idx, bsf_subseq_idx, m, Ts_squared, Ts_subseq_isfinite
+    (
+        central_radius,
+        central_Ts_idx,
+        central_subseq_idx,
+    ) = _get_aamp_central_motif(
+        Ts_copy,
+        bsf_radius,
+        bsf_Ts_idx,
+        bsf_subseq_idx,
+        m,
+        Ts_subseq_isfinite,
+        p=p,
     )
 
     return central_radius, central_Ts_idx, central_subseq_idx
