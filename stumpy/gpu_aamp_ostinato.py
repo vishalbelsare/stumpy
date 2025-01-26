@@ -2,13 +2,11 @@
 # Copyright 2019 TD Ameritrade. Released under the terms of the 3-Clause BSD license.
 # STUMPY is a trademark of TD Ameritrade IP Company, Inc. All rights reserved.
 
-import numpy as np
-
 from . import core, gpu_aamp
 from .aamp_ostinato import _aamp_ostinato, _get_aamp_central_motif
 
 
-def gpu_aamp_ostinato(Ts, m, device_id=0):
+def gpu_aamp_ostinato(Ts, m, device_id=0, p=2.0):
     """
     Find the non-normalized (i.e., without z-normalization) consensus motif of multiple
     time series with one or more GPU devices
@@ -31,17 +29,22 @@ def gpu_aamp_ostinato(Ts, m, device_id=0):
         computation. A list of all valid device ids can be obtained by
         executing `[device.id for device in numba.cuda.list_devices()]`.
 
+    p : float, default 2.0
+        The p-norm to apply for computing the Minkowski distance. Minkowski distance is
+        typically used with `p` being 1 or 2, which correspond to the Manhattan distance
+        and the Euclidean distance, respectively.
+
     Returns
     -------
     central_radius : float
         Radius of the most central consensus motif
 
     central_Ts_idx : int
-        The time series index in `Ts` which contains the most central consensus motif
+        The time series index in `Ts` that contains the most central consensus motif
 
     central_subseq_idx : int
-        The subsequence index within time series `Ts[central_motif_Ts_idx]` the contains
-        most central consensus motif
+        The subsequence index within time series `Ts[central_motif_Ts_idx]` that
+        contains the most central consensus motif
 
     Notes
     -----
@@ -63,18 +66,38 @@ def gpu_aamp_ostinato(Ts, m, device_id=0):
     central motif it is necessary to search the subsequences with the
     best radius via `stumpy.ostinato._get_central_motif`
     """
-    Ts_squared = [None] * len(Ts)
+    if not isinstance(Ts, list):  # pragma: no cover
+        raise ValueError(f"`Ts` is of type `{type(Ts)}` but a `list` is expected")
+
+    Ts_copy = [None] * len(Ts)
     Ts_subseq_isfinite = [None] * len(Ts)
     for i, T in enumerate(Ts):
-        Ts[i], Ts_subseq_isfinite[i] = core.preprocess_non_normalized(T, m)
-        Ts_squared[i] = np.sum(core.rolling_window(Ts[i] * Ts[i], m), axis=1)
+        (
+            Ts_copy[i],
+            Ts_subseq_isfinite[i],
+        ) = core.preprocess_non_normalized(T, m, copy=True)
 
     bsf_radius, bsf_Ts_idx, bsf_subseq_idx = _aamp_ostinato(
-        Ts, m, Ts_squared, Ts_subseq_isfinite, device_id=device_id, mp_func=gpu_aamp
+        Ts_copy,
+        m,
+        Ts_subseq_isfinite,
+        p=p,
+        device_id=device_id,
+        mp_func=gpu_aamp,
     )
 
-    (central_radius, central_Ts_idx, central_subseq_idx,) = _get_aamp_central_motif(
-        Ts, bsf_radius, bsf_Ts_idx, bsf_subseq_idx, m, Ts_squared, Ts_subseq_isfinite
+    (
+        central_radius,
+        central_Ts_idx,
+        central_subseq_idx,
+    ) = _get_aamp_central_motif(
+        Ts_copy,
+        bsf_radius,
+        bsf_Ts_idx,
+        bsf_subseq_idx,
+        m,
+        Ts_subseq_isfinite,
+        p=p,
     )
 
     return central_radius, central_Ts_idx, central_subseq_idx
