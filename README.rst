@@ -1,37 +1,44 @@
-.. image:: https://img.shields.io/pypi/v/stumpy.svg
+|PyPI Version| |Conda Forge Version| |PyPI Downloads| |License| |Test Status| |Code Coverage|
+
+|RTD Status| |Binder| |JOSS| |NumFOCUS| |FOSSA|
+
+.. |PyPI Version| image:: https://img.shields.io/pypi/v/stumpy.svg
     :target: https://pypi.org/project/stumpy/
     :alt: PyPI Version
-.. image:: https://anaconda.org/conda-forge/stumpy/badges/version.svg
+.. |Conda Forge Version| image:: https://anaconda.org/conda-forge/stumpy/badges/version.svg
     :target: https://anaconda.org/conda-forge/stumpy
-    :alt: Conda-forge Version
-.. image:: https://pepy.tech/badge/stumpy/month
+    :alt: Conda-Forge Version
+.. |PyPI Downloads| image:: https://static.pepy.tech/badge/stumpy/month
     :target: https://pepy.tech/project/stumpy
     :alt: PyPI Downloads
-.. image:: https://img.shields.io/pypi/l/stumpy.svg
+.. |License| image:: https://img.shields.io/pypi/l/stumpy.svg
     :target: https://github.com/TDAmeritrade/stumpy/blob/master/LICENSE.txt
     :alt: License
-.. image:: https://github.com/TDAmeritrade/stumpy/workflows/Tests/badge.svg
+.. |Test Status| image:: https://github.com/TDAmeritrade/stumpy/workflows/Tests/badge.svg
     :target: https://github.com/TDAmeritrade/stumpy/actions?query=workflow%3ATests+branch%3Amain
     :alt: Test Status
-.. image:: https://codecov.io/gh/TDAmeritrade/stumpy/branch/master/graph/badge.svg
+.. |Code Coverage| image:: https://codecov.io/gh/TDAmeritrade/stumpy/branch/master/graph/badge.svg
     :target: https://codecov.io/gh/TDAmeritrade/stumpy
     :alt: Code Coverage
-.. image:: https://readthedocs.org/projects/stumpy/badge/?version=latest
+.. |RTD Status| image:: https://readthedocs.org/projects/stumpy/badge/?version=latest
     :target: https://stumpy.readthedocs.io/
     :alt: ReadTheDocs Status
-.. image:: https://mybinder.org/badge_logo.svg
+.. |Binder| image:: https://mybinder.org/badge_logo.svg
     :target: https://mybinder.org/v2/gh/TDAmeritrade/stumpy/main?filepath=notebooks
     :alt: Binder
-.. image:: http://joss.theoj.org/papers/10.21105/joss.01504/status.svg
+.. |JOSS| image:: http://joss.theoj.org/papers/10.21105/joss.01504/status.svg
     :target: https://doi.org/10.21105/joss.01504
     :alt: JOSS
-.. image:: https://zenodo.org/badge/184809315.svg
+.. |DOI| image:: https://zenodo.org/badge/184809315.svg
     :target: https://zenodo.org/badge/latestdoi/184809315
     :alt: DOI
-.. image:: https://app.fossa.com/api/projects/custom%2B9056%2Fgithub.com%2FTDAmeritrade%2Fstumpy.svg?type=shield
+.. |NumFOCUS| image:: https://img.shields.io/badge/NumFOCUS-Affiliated%20Project-orange.svg?style=flat&colorA=E1523D&colorB=007D8A
+    :target: https://numfocus.org/sponsored-projects/affiliated-projects
+    :alt: NumFOCUS Affiliated Project
+.. |FOSSA| image:: https://app.fossa.com/api/projects/custom%2B9056%2Fgithub.com%2FTDAmeritrade%2Fstumpy.svg?type=shield
     :target: https://app.fossa.io/projects/custom%2B9056%2Fgithub.com%2FTDAmeritrade%2Fstumpy?ref=badge_shield
     :alt: FOSSA
-.. image:: https://img.shields.io/twitter/follow/stumpy_dev.svg?style=social
+.. |Twitter| image:: https://img.shields.io/twitter/follow/stumpy_dev.svg?style=social
     :target: https://twitter.com/stumpy_dev
     :alt: Twitter
 
@@ -45,7 +52,12 @@
 STUMPY
 ======
 
-STUMPY is a powerful and scalable library that efficiently computes something called the `matrix profile <https://stumpy.readthedocs.io/en/latest/Tutorial_The_Matrix_Profile.html>`__, which can be used for a variety of time series data mining tasks such as:
+STUMPY is a powerful and scalable Python library that efficiently computes something called the `matrix profile <https://stumpy.readthedocs.io/en/latest/Tutorial_The_Matrix_Profile.html>`__, which is just an academic way of saying "for every (green) subsequence within your time series, automatically identify its corresponding nearest-neighbor (grey)":
+
+.. image:: https://github.com/TDAmeritrade/stumpy/blob/main/docs/images/stumpy_demo.gif?raw=true
+    :alt: STUMPY Animated GIF
+
+What's important is that once you've computed your matrix profile (middle panel above) it can then be used for a variety of time series data mining tasks such as:
 
 * pattern/motif (approximately repeated subsequences within a longer time series) discovery
 * anomaly/novelty (discord) discovery
@@ -88,12 +100,11 @@ Distributed usage for 1-dimensional time series data with Dask Distributed via `
     from dask.distributed import Client
 
     if __name__ == "__main__":
-        dask_client = Client()
+        with Client() as dask_client:
+            your_time_series = np.random.rand(10000)
+            window_size = 50  # Approximately, how many data points might be found in a pattern 
     
-        your_time_series = np.random.rand(10000)
-        window_size = 50  # Approximately, how many data points might be found in a pattern 
-    
-        matrix_profile = stumpy.stumped(dask_client, your_time_series, m=window_size)
+            matrix_profile = stumpy.stumped(dask_client, your_time_series, m=window_size)
 
 GPU usage for 1-dimensional time series data with `GPU-STUMP <https://stumpy.readthedocs.io/en/latest/api.html#stumpy.gpu_stump>`__:
 
@@ -132,12 +143,11 @@ Distributed multi-dimensional time series data analysis with Dask Distributed `M
     from dask.distributed import Client
 
     if __name__ == "__main__":
-        dask_client = Client()
+        with Client() as dask_client:
+            your_time_series = np.random.rand(3, 1000)   # Each row represents data from a different dimension while each column represents data from the same dimension
+            window_size = 50  # Approximately, how many data points might be found in a pattern
 
-        your_time_series = np.random.rand(3, 1000)   # Each row represents data from a different dimension while each column represents data from the same dimension
-        window_size = 50  # Approximately, how many data points might be found in a pattern
-
-        matrix_profile, matrix_profile_indices = stumpy.mstumped(dask_client, your_time_series, m=window_size)
+            matrix_profile, matrix_profile_indices = stumpy.mstumped(dask_client, your_time_series, m=window_size)
 
 Time Series Chains with `Anchored Time Series Chains (ATSC) <https://stumpy.readthedocs.io/en/latest/api.html#stumpy.atsc>`__:
 
@@ -212,12 +222,7 @@ To install stumpy from source, see the instructions in the `documentation <https
 Documentation
 -------------
 
-In order to fully understand and appreciate the underlying algorithms and applications, it is imperative that you read the original publications_. For a more detailed example of how to use STUMPY please consult the latest `documentation <https://stumpy.readthedocs.io/en/latest/>`__ or explore the following tutorials:
-
-1. `The Matrix Profile <https://stumpy.readthedocs.io/en/latest/Tutorial_The_Matrix_Profile.html>`__
-2. `STUMPY Basics <https://stumpy.readthedocs.io/en/latest/Tutorial_STUMPY_Basics.html>`__
-3. `Time Series Chains <https://stumpy.readthedocs.io/en/latest/Tutorial_Time_Series_Chains.html>`__
-4. `Semantic Segmentation <https://stumpy.readthedocs.io/en/latest/Tutorial_Semantic_Segmentation.html>`__
+In order to fully understand and appreciate the underlying algorithms and applications, it is imperative that you read the original publications_. For a more detailed example of how to use STUMPY please consult the latest `documentation <https://stumpy.readthedocs.io/en/latest/>`__ or explore our `hands-on tutorials <https://stumpy.readthedocs.io/en/latest/tutorials.html>`__.
 
 -----------
 Performance
@@ -320,7 +325,7 @@ Tests are written in the ``tests`` directory and processed using `PyTest <https:
 Python Version
 --------------
 
-STUMPY supports `Python 3.7+ <https://python3statement.org/>`__ and, due to the use of unicode variable names/identifiers, is not compatible with Python 2.x. Given the small dependencies, STUMPY may work on older versions of Python but this is beyond the scope of our support and we strongly recommend that you upgrade to the most recent version of Python.
+STUMPY supports `Python 3.9+ <https://python3statement.org/>`__ and, due to the use of unicode variable names/identifiers, is not compatible with Python 2.x. Given the small dependencies, STUMPY may work on older versions of Python but this is beyond the scope of our support and we strongly recommend that you upgrade to the most recent version of Python.
 
 ------------
 Getting Help

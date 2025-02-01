@@ -5,7 +5,12 @@ Tutorials
 .. image:: https://mybinder.org/badge_logo.svg
     :target: https://mybinder.org/v2/gh/TDAmeritrade/stumpy/main?filepath=notebooks
     :alt: Binder
-|
+
+..
+    The pipe, "|",below adds a line break and must be preceded and proceeded by a newline
+
+| 
+
 .. toctree::
     :maxdepth: 1
     :glob:
@@ -20,3 +25,5 @@ Tutorials
     Tutorial_AB_Joins.ipynb
     Tutorial_Consensus_Motif.ipynb
     Tutorial_Multidimensional_Motif_Discovery.ipynb
+    Tutorial_Annotation_Vectors.ipynb
+    Tutorial_Shapelet_Discovery.ipynb

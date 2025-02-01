@@ -3,9 +3,11 @@
 # STUMPY is a trademark of TD Ameritrade IP Company, Inc. All rights reserved.
 
 import math
+
 import numpy as np
-from .core import check_window_size, _get_mask_slices
+
 from .aampdist import _aampdist_vect
+from .core import _get_mask_slices, check_window_size
 
 
 def _get_all_aampdist_profiles(
@@ -16,6 +18,7 @@ def _get_all_aampdist_profiles(
     mpdist_percentage=0.05,
     mpdist_k=None,
     mpdist_custom_func=None,
+    p=2.0,
 ):
     """
     For each non-overlapping subsequence, `S[i]`, in `T`, compute the matrix profile
@@ -53,12 +56,15 @@ def _get_all_aampdist_profiles(
         Specify the `k`th value in the concatenated matrix profiles to return. When
         `mpdist_k` is not `None`, then the `mpdist_percentage` parameter is ignored.
 
-    mpdist_custom_func : object, default None
+    mpdist_custom_func : function, default None
         A custom user defined function for selecting the desired value from the
         sorted `P_ABBA` array. This function may need to leverage `functools.partial`
         and should take `P_ABBA` as its only input parameter and return a single
         `MPdist` value. The `percentage` and `k` parameters are ignored when
         `mpdist_custom_func` is not None.
+
+    p : float, default 2.0
+        The p-norm to apply for computing the Minkowski distance.
 
     Returns
     -------
@@ -106,6 +112,7 @@ def _get_all_aampdist_profiles(
             percentage=mpdist_percentage,
             k=mpdist_k,
             custom_func=mpdist_custom_func,
+            p=p,
         )
 
     stop_idx = n_padded - m + 1 - right_pad
@@ -122,6 +129,7 @@ def aampdist_snippets(
     s=None,
     mpdist_percentage=0.05,
     mpdist_k=None,
+    p=2.0,
 ):
     """
     Identify the top `k` snippets that best represent the time series, `T`
@@ -159,6 +167,9 @@ def aampdist_snippets(
     mpdist_k : int
         Specify the `k`th value in the concatenated matrix profiles to return. When
         `mpdist_k` is not `None`, then the `mpdist_percentage` parameter is ignored.
+
+    p : float, default 2.0
+        The p-norm to apply for computing the Minkowski distance.
 
     Returns
     -------
@@ -206,6 +217,7 @@ def aampdist_snippets(
         s=s,
         mpdist_percentage=mpdist_percentage,
         mpdist_k=mpdist_k,
+        p=p,
     )
 
     pad_width = (0, int(m * np.ceil(T.shape[0] / m) - T.shape[0]))

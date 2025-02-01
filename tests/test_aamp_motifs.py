@@ -1,10 +1,9 @@
+import naive
 import numpy as np
 import numpy.testing as npt
 import pytest
 
-from stumpy import aamp_motifs, aamp_match
-
-import naive
+from stumpy import aamp_match, aamp_motifs, core
 
 test_data = [
     (
@@ -19,9 +18,9 @@ test_data = [
 ]
 
 
-def naive_aamp_match(Q, T, excl_zone, max_distance):
+def naive_aamp_match(Q, T, p, excl_zone, max_distance):
     m = Q.shape[0]
-    D = naive.aamp_distance_profile(Q, T, m)
+    D = naive.aamp_distance_profile(Q, T, m, p)
 
     # Finds all indices that have a lower distance profile value `D`
     # than `atol + rtol * D`
@@ -53,17 +52,19 @@ def test_aamp_motifs_one_motif():
     left_indices = [[0, 5]]
     left_profile_values = [[0.0, 0.0]]
 
-    mp = naive.aamp(T, m)
-    right_distance_values, right_indices = aamp_motifs(
-        T,
-        mp[:, 0],
-        max_motifs=max_motifs,
-        max_distance=0.001,
-        cutoff=np.inf,
-    )
+    for p in [1.0, 2.0, 3.0]:
+        mp = naive.aamp(T, m, p=p)
+        right_distance_values, right_indices = aamp_motifs(
+            T,
+            mp[:, 0],
+            max_motifs=max_motifs,
+            max_distance=0.001,
+            cutoff=np.inf,
+            p=p,
+        )
 
-    npt.assert_array_equal(left_indices, right_indices)
-    npt.assert_almost_equal(left_profile_values, right_distance_values, decimal=4)
+        npt.assert_array_equal(left_indices, right_indices)
+        npt.assert_almost_equal(left_profile_values, right_distance_values, decimal=4)
 
 
 def test_aamp_motifs_two_motifs():
@@ -133,19 +134,22 @@ def test_aamp_naive_match_exact():
     m = Q.shape[0]
     excl_zone = int(np.ceil(m / 4))
 
-    left = [[0, 0], [0, 5]]
-    right = list(
-        naive_aamp_match(
-            Q,
-            T,
-            excl_zone=excl_zone,
-            max_distance=0.001,  # Small max_distance as matches are identical
+    for p in [1.0, 2.0, 3.0]:
+        left = [[0, 0], [0, 5]]
+        right = list(
+            naive_aamp_match(
+                Q,
+                T,
+                p=p,
+                excl_zone=excl_zone,
+                max_distance=0.001,  # Small max_distance as matches are identical
+            )
         )
-    )
-    # To avoid sorting errors we first sort based on disance and then based on indices
-    right.sort(key=lambda x: (x[1], x[0]))
+        # To avoid sorting errors we first sort based on distance and then based on
+        # indices
+        right.sort(key=lambda x: (x[1], x[0]))
 
-    npt.assert_almost_equal(left, right)
+        npt.assert_almost_equal(left, right)
 
 
 def test_aamp_naive_match_exclusion_zone():
@@ -161,22 +165,25 @@ def test_aamp_naive_match_exclusion_zone():
     # Extra large exclusion zone to exclude the first almost perfect match
     excl_zone = m
 
-    left = [
-        [0, 3],
-        [naive.distance(Q, T[7 : 7 + m]), 7],
-    ]
-    right = list(
-        naive_aamp_match(
-            Q,
-            T,
-            excl_zone=excl_zone,
-            max_distance=0.2,
+    for p in [1.0, 2.0, 3.0]:
+        left = [
+            [0, 3],
+            [naive.distance(Q, T[7 : 7 + m], p=p), 7],
+        ]
+        right = list(
+            naive_aamp_match(
+                Q,
+                T,
+                p=p,
+                excl_zone=excl_zone,
+                max_distance=0.2,
+            )
         )
-    )
-    # To avoid sorting errors we first sort based on disance and then based on indices
-    right.sort(key=lambda x: (x[0], x[1]))
+        # To avoid sorting errors we first sort based on distance and then based on
+        # indices
+        right.sort(key=lambda x: (x[0], x[1]))
 
-    npt.assert_almost_equal(left, right)
+        npt.assert_almost_equal(left, right)
 
 
 @pytest.mark.parametrize("Q, T", test_data)
@@ -185,18 +192,49 @@ def test_aamp_match(Q, T):
     excl_zone = int(np.ceil(m / 4))
     max_distance = 0.3
 
-    left = naive_aamp_match(
-        Q,
-        T,
-        excl_zone,
-        max_distance=max_distance,
-    )
+    for p in [1.0, 2.0, 3.0]:
+        left = naive_aamp_match(
+            Q,
+            T,
+            p=p,
+            excl_zone=excl_zone,
+            max_distance=max_distance,
+        )
 
-    right = aamp_match(
-        Q,
-        T,
-        max_matches=None,
-        max_distance=max_distance,
-    )
+        right = aamp_match(
+            Q,
+            T,
+            p=p,
+            max_matches=None,
+            max_distance=max_distance,
+        )
 
-    npt.assert_almost_equal(left, right)
+        npt.assert_almost_equal(left, right)
+
+
+@pytest.mark.parametrize("Q, T", test_data)
+def test_aamp_match_T_subseq_isfinite(Q, T):
+    m = Q.shape[0]
+    excl_zone = int(np.ceil(m / 4))
+    max_distance = 0.3
+    T, T_subseq_isfinite = core.preprocess_non_normalized(T, len(Q))
+
+    for p in [1.0, 2.0, 3.0]:
+        left = naive_aamp_match(
+            Q,
+            T,
+            p=p,
+            excl_zone=excl_zone,
+            max_distance=max_distance,
+        )
+
+        right = aamp_match(
+            Q,
+            T,
+            T_subseq_isfinite,
+            p=p,
+            max_matches=None,
+            max_distance=max_distance,
+        )
+
+        npt.assert_almost_equal(left, right)
